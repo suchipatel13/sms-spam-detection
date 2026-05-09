@@ -40,6 +40,14 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
+# Preprocessing demo example
+sample_message = "FREE entry!!! Win $1000 NOW!!!"
+cleaned_sample = clean_text(sample_message)
+
+print("\nPreprocessing Demo:")
+print("Original Message:", sample_message)
+print("Cleaned Message :", cleaned_sample)
+
 df["cleaned_message"] = df["message"].apply(clean_text)
 
 # Convert labels to numbers
