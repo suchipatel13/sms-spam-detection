@@ -5,8 +5,9 @@ import matplotlib.pyplot as plt
 import joblib
 from pathlib import Path
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_validate
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import Pipeline
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
@@ -18,7 +19,8 @@ from sklearn.metrics import (
     f1_score,
     confusion_matrix,
     ConfusionMatrixDisplay,
-    classification_report
+    classification_report,
+    make_scorer
 )
 
 # Load dataset
@@ -182,6 +184,67 @@ def predict_spam(message):
     return "spam" if prediction == 1 else "not spam"
 
 
+def run_cross_validation(experiment_name, experiment_df):
+    print("\n" + "#" * 70)
+    print(f"5-Fold Cross-Validation: {experiment_name}")
+    print("#" * 70)
+
+    X = experiment_df["cleaned_message"]
+    y = experiment_df["label_num"]
+
+    # Cross-validation reduces dependence on one train/test split by rotating
+    # which rows are used for testing across five stratified folds.
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    scoring = {
+        "accuracy": "accuracy",
+        "recall": make_scorer(recall_score, zero_division=0),
+        "f1": make_scorer(f1_score, zero_division=0)
+    }
+
+    cv_results = []
+
+    for model_name, model in get_models().items():
+        # The pipeline prevents leakage by fitting TF-IDF separately inside
+        # each fold rather than on the full dataset before validation.
+        pipeline = Pipeline([
+            ("tfidf", TfidfVectorizer(stop_words="english")),
+            ("model", model)
+        ])
+
+        scores = cross_validate(
+            pipeline,
+            X,
+            y,
+            cv=cv,
+            scoring=scoring
+        )
+
+        accuracy_mean = scores["test_accuracy"].mean()
+        accuracy_std = scores["test_accuracy"].std()
+        recall_mean = scores["test_recall"].mean()
+        recall_std = scores["test_recall"].std()
+        f1_mean = scores["test_f1"].mean()
+        f1_std = scores["test_f1"].std()
+
+        cv_results.append({
+            "Experiment": experiment_name,
+            "Model": model_name,
+            "Accuracy Mean": accuracy_mean,
+            "Accuracy Std": accuracy_std,
+            "Recall Mean": recall_mean,
+            "Recall Std": recall_std,
+            "F1 Mean": f1_mean,
+            "F1 Std": f1_std
+        })
+
+        print(f"\n{model_name}")
+        print("Accuracy:", round(accuracy_mean, 4), "+/-", round(accuracy_std, 4))
+        print("Recall  :", round(recall_mean, 4), "+/-", round(recall_std, 4))
+        print("F1-Score:", round(f1_mean, 4), "+/-", round(f1_std, 4))
+
+    return cv_results
+
+
 deduplicated_df = df.drop_duplicates(subset=["label", "message"]).copy()
 print("\nDeduplicated dataset size:", len(deduplicated_df), "rows")
 print("Rows removed by deduplication:", len(df) - len(deduplicated_df))
@@ -220,3 +283,17 @@ for msg in test_messages:
     result = predict_spam(msg)
     print(f"\nMessage: {msg}")
     print(f"Classification: {result}")
+
+all_cv_results = []
+all_cv_results.extend(run_cross_validation("Original Dataset", df))
+all_cv_results.extend(run_cross_validation("Deduplicated Dataset", deduplicated_df))
+
+cv_results_df = pd.DataFrame(all_cv_results)
+cv_results_df = cv_results_df.sort_values(by=["Experiment", "F1 Mean"], ascending=[True, False])
+
+print("\nCross-Validation Summary:")
+print(cv_results_df.to_string(index=False))
+
+cv_path = outputs_dir / "cross_validation_results.csv"
+cv_results_df.to_csv(cv_path, index=False)
+print(f"\nSaved cross-validation results to: {cv_path}")
