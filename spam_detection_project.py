@@ -8,6 +8,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
+from sklearn.dummy import DummyClassifier
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -75,6 +76,8 @@ X_test_tfidf = vectorizer.transform(X_test)
 
 # Models
 models = {
+    # Majority-class baseline shows whether real models beat simply predicting "ham".
+    "Baseline (Most Frequent)": DummyClassifier(strategy="most_frequent"),
     "Naive Bayes": MultinomialNB(),
     "Logistic Regression": LogisticRegression(max_iter=1000),
     "SVM": LinearSVC()
