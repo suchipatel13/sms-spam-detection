@@ -2,6 +2,8 @@ import pandas as pd
 import string
 import re
 import matplotlib.pyplot as plt
+import joblib
+import os
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -127,3 +129,57 @@ results_df = results_df.sort_values(by="F1-Score", ascending=False)
 
 print("\nFinal Model Comparison:")
 print(results_df.to_string(index=False))
+
+# Save the best model (SVM has the highest F1-score)
+best_model = models["SVM"]
+best_model_name = "SVM"
+
+print("\n" + "=" * 50)
+print(f"Saving best model: {best_model_name}")
+print("=" * 50)
+
+joblib.dump(best_model, "spam_classifier_model.pkl")
+joblib.dump(vectorizer, "tfidf_vectorizer.pkl")
+
+print("✓ Model saved as: spam_classifier_model.pkl")
+print("✓ Vectorizer saved as: tfidf_vectorizer.pkl")
+
+# Predict on new messages
+def predict_spam(message):
+    """
+    Classify a message as spam or not spam.
+    
+    Args:
+        message (str): The SMS message to classify
+        
+    Returns:
+        str: 'spam' or 'not spam'
+    """
+    # Load model and vectorizer if not already loaded
+    if not hasattr(predict_spam, 'model'):
+        predict_spam.model = joblib.load("spam_classifier_model.pkl")
+        predict_spam.vectorizer = joblib.load("tfidf_vectorizer.pkl")
+    
+    cleaned = clean_text(message)
+    vectorized = predict_spam.vectorizer.transform([cleaned])
+    prediction = predict_spam.model.predict(vectorized)[0]
+    return "spam" if prediction == 1 else "not spam"
+
+# Demo: Test the predict function
+print("\n" + "=" * 50)
+print("Testing Predict Function")
+print("=" * 50)
+
+test_messages = [
+    "Congratulations! You've won a free prize. Claim now!",
+    "Hey, how are you doing today?",
+    "URGENT: Click here to verify your account or it will be closed!",
+    "See you at the meeting tomorrow at 3pm"
+]
+
+for msg in test_messages:
+    result = predict_spam(msg)
+    print(f"\nMessage: {msg}")
+    print(f"Classification: {result}")
+
+
