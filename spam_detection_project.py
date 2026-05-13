@@ -23,6 +23,14 @@ from sklearn.metrics import (
     make_scorer
 )
 
+outputs_dir = Path("outputs")
+outputs_dir.mkdir(exist_ok=True)
+
+
+def safe_filename(name):
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+
 # Load dataset
 # Make sure your CSV file is named spam.csv and is in the same folder
 df = pd.read_csv("spam.csv", encoding="latin-1")
@@ -62,6 +70,49 @@ df["cleaned_message"] = df["message"].apply(clean_text)
 
 # Convert labels to numbers
 df["label_num"] = df["label"].map({"ham": 0, "spam": 1})
+
+
+def save_class_distribution_plot(original_df, deduplicated_df):
+    class_counts = pd.DataFrame({
+        "Original Dataset": original_df["label"].value_counts(),
+        "Deduplicated Dataset": deduplicated_df["label"].value_counts()
+    }).loc[["ham", "spam"]]
+
+    ax = class_counts.plot(kind="bar", figsize=(8, 5), rot=0)
+    ax.set_title("Class Distribution")
+    ax.set_xlabel("Message Label")
+    ax.set_ylabel("Number of Messages")
+    ax.legend(title="Dataset")
+    plt.tight_layout()
+
+    path = outputs_dir / "class_distribution.png"
+    plt.savefig(path, dpi=300)
+    plt.close()
+    print(f"Saved class distribution chart to: {path}")
+
+
+def save_model_comparison_plot(results_df):
+    plot_df = results_df.copy()
+    plot_df["Experiment / Model"] = plot_df["Experiment"] + "\n" + plot_df["Model"]
+    plot_df = plot_df.set_index("Experiment / Model")
+
+    ax = plot_df[["Accuracy", "Precision", "Recall", "F1-Score"]].plot(
+        kind="bar",
+        figsize=(13, 6)
+    )
+    ax.set_title("Model Performance Comparison")
+    ax.set_xlabel("")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 1.05)
+    ax.legend(title="Metric", loc="lower right")
+    plt.xticks(rotation=35, ha="right")
+    plt.tight_layout()
+
+    path = outputs_dir / "model_comparison.png"
+    plt.savefig(path, dpi=300)
+    plt.close()
+    print(f"Saved model comparison chart to: {path}")
+
 
 def get_models():
     return {
@@ -144,7 +195,14 @@ def run_experiment(experiment_name, experiment_df):
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["ham", "spam"])
         disp.plot()
         plt.title(f"Confusion Matrix - {experiment_name} - {model_name}")
-        plt.show()
+        plt.tight_layout()
+
+        # Save confusion matrices so the report/slides can cite exact model
+        # behavior without relying on pop-up windows during a script run.
+        cm_path = outputs_dir / f"confusion_matrix_{safe_filename(experiment_name)}_{safe_filename(model_name)}.png"
+        plt.savefig(cm_path, dpi=300)
+        plt.close()
+        print(f"Saved confusion matrix to: {cm_path}")
 
     return results
 
@@ -248,6 +306,7 @@ def run_cross_validation(experiment_name, experiment_df):
 deduplicated_df = df.drop_duplicates(subset=["label", "message"]).copy()
 print("\nDeduplicated dataset size:", len(deduplicated_df), "rows")
 print("Rows removed by deduplication:", len(df) - len(deduplicated_df))
+save_class_distribution_plot(df, deduplicated_df)
 
 all_results = []
 all_results.extend(run_experiment("Original Dataset", df))
@@ -260,11 +319,14 @@ results_df = results_df.sort_values(by=["Experiment", "F1-Score"], ascending=[Tr
 print("\nFinal Model Comparison:")
 print(results_df.to_string(index=False))
 
-outputs_dir = Path("outputs")
-outputs_dir.mkdir(exist_ok=True)
 comparison_path = outputs_dir / "duplicate_experiment_comparison.csv"
 results_df.to_csv(comparison_path, index=False)
 print(f"\nSaved duplicate experiment comparison to: {comparison_path}")
+
+model_comparison_path = outputs_dir / "model_comparison.csv"
+results_df.to_csv(model_comparison_path, index=False)
+print(f"Saved final model metrics table to: {model_comparison_path}")
+save_model_comparison_plot(results_df)
 
 save_prediction_model(deduplicated_df)
 
